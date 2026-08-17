@@ -2,11 +2,15 @@ use log::{error, trace};
 use poise::serenity_prelude as serenity;
 use simple_logger::SimpleLogger;
 
-pub struct Data {}
+pub struct Data {
+    pub pool: db::Pool,
+}
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type PoiseContext<'a> = poise::Context<'a, Data, Error>;
 
 mod commands;
+mod db;
+mod models;
 
 use commands::*;
 
@@ -21,6 +25,7 @@ async fn main() -> anyhow::Result<()> {
         "reqwest",
         "rustls",
         "tungstenite",
+        "sqlx",
     ];
     let mut logger = SimpleLogger::new();
     for i in ignored {
@@ -55,12 +60,15 @@ async fn main() -> anyhow::Result<()> {
     // get guild id from from env variables
     let guild_id = std::env::var("DISCORD_GUILD_ID");
 
+    // create database pool
+    let pool = db::create_pool().await?;
+
     // intents
     let intents = serenity::GatewayIntents::non_privileged();
     trace!("Got intents: {:?}", intents);
 
     // commands
-    let commands = vec![ping(), age(), hello()];
+    let commands = vec![hello(), waypoints()];
 
     // framework
     let framework = poise::Framework::builder()
@@ -101,7 +109,7 @@ async fn main() -> anyhow::Result<()> {
                     trace!("  - {}", c.name)
                 }
 
-                Ok(Data {})
+                Ok(Data { pool })
             })
         })
         .build();
