@@ -1,17 +1,23 @@
 use crate::Error;
 use crate::PoiseContext;
 use crate::db;
+use crate::models::DimensionEnum;
 
 // https://docs.rs/poise/0.6.2/src/poise/builtins/paginate.rs.html
-#[poise::command(slash_command, prefix_command, subcommands("list"), aliases("w"))]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    subcommands("list"),
+    aliases("waypoint", "w")
+)]
 pub async fn waypoints(ctx: PoiseContext<'_>) -> Result<(), Error> {
     Ok(())
 }
 
 #[poise::command(slash_command, prefix_command)]
-pub async fn list(ctx: PoiseContext<'_>) -> Result<(), Error> {
+pub async fn list(ctx: PoiseContext<'_>, dimension: Option<DimensionEnum>) -> Result<(), Error> {
     // get waypoints or say error
-    let waypoints = match db::select_waypoints(&ctx.data().pool).await {
+    let waypoints = match db::select_waypoints(&ctx.data().pool, &dimension).await {
         Ok(val) => val,
         Err(e) => {
             ctx.say(format!("Failed getting waypoints: {}", e)).await?;
@@ -32,7 +38,15 @@ pub async fn list(ctx: PoiseContext<'_>) -> Result<(), Error> {
 
     // each page
     for (n, page) in (1..).zip(waypoints.chunks(PAGE_SIZE)) {
-        let mut text = format!("## Waypoints\nPage {}/{}", n, max_pages);
+        let mut text = "## Waypoints".to_string();
+
+        // dimension, if filetered
+        if let Some(dim) = &dimension {
+            text.push_str(&format!("\nDimension: {}", dim));
+        }
+
+        // page
+        text.push_str(&format!("\nPage {}/{}", n, max_pages));
 
         // each waypoint
         for w in page {
@@ -44,11 +58,13 @@ pub async fn list(ctx: PoiseContext<'_>) -> Result<(), Error> {
             {
                 name.push_str("*(Completed)*");
             };
-            // coords, dimension
-            text.push_str(&format!(
-                "\n\n{}\n{} / {} / {}\n> {}",
-                name, w.x, w.y, w.z, w.dimension
-            ));
+            // name, coords
+            text.push_str(&format!("\n\n{}\n{} / {} / {}", name, w.x, w.y, w.z));
+
+            // dimension, if not filtered
+            if dimension.is_none() {
+                text.push_str(&format!("\n> {}", w.dimension));
+            }
         }
 
         pages.push(text);

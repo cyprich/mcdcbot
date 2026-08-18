@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+#[derive(sqlx::FromRow)]
 pub struct Waypoint {
     pub id: i32,
     pub x: i32,
@@ -10,32 +11,24 @@ pub struct Waypoint {
     pub completed: Option<bool>,
 }
 
-impl Display for Waypoint {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // let mut result = format!(
-        //     "#{} - {}: {}/{}/{} - {}",
-        //     self.id, self.name, self.x, self.y, self.z, self.dimension
-        // );
-
-        let mut result = format!(
-            "{}: {}/{}/{} - {}",
-            self.name, self.x, self.y, self.z, self.dimension
-        );
-
-        if let Some(val) = self.completed
-            && val
-        {
-            result = format!("{} (✓)", result,)
-        }
-
-        write!(f, "{}", result)
-    }
+#[derive(Debug, poise::ChoiceParameter)]
+pub enum DimensionEnum {
+    #[name = "overworld"]
+    Overworld,
+    #[name = "nether"]
+    Nether,
+    #[name = "end"]
+    End,
 }
 
-pub enum WaypointOptions {
-    Overworld,
-    Nether,
-    End,
-    Completed,
-    Uncompleted,
+impl Display for DimensionEnum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let val = match self {
+            DimensionEnum::Overworld => "The Overworld",
+            DimensionEnum::Nether => "The Nether",
+            DimensionEnum::End => "The End",
+        };
+
+        write!(f, "{}", val)
+    }
 }
