@@ -19,6 +19,7 @@ pub async fn create_pool() -> anyhow::Result<Pool> {
 pub async fn select_waypoints(
     pool: &Pool,
     dimension: &Option<DimensionEnum>,
+    completed: &Option<bool>,
 ) -> anyhow::Result<Vec<models::Waypoint>> {
     let mut tx = pool.begin().await?;
     let mut builder = Builder::new(
@@ -29,7 +30,8 @@ pub async fn select_waypoints(
             d.name dimension, 
             completed
         from waypoints w 
-        join dimensions d on w.dimension = d.id ",
+        join dimensions d on w.dimension = d.id 
+        where 1=1 ",
     );
 
     // chceck dimension
@@ -46,8 +48,14 @@ pub async fn select_waypoints(
             return Err(anyhow::Error::from(e));
         }
 
-        builder.push(" where dimension = ");
+        builder.push(" and dimension = ");
         builder.push_bind(dim_id.unwrap());
+    }
+
+    // check completed
+    if let Some(completed) = completed {
+        builder.push(" and completed = ");
+        builder.push_bind(completed);
     }
 
     // order

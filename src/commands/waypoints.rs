@@ -10,14 +10,18 @@ use crate::models::DimensionEnum;
     subcommands("list"),
     aliases("waypoint", "w")
 )]
-pub async fn waypoints(ctx: PoiseContext<'_>) -> Result<(), Error> {
+pub async fn waypoints(_: PoiseContext<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-#[poise::command(slash_command, prefix_command)]
-pub async fn list(ctx: PoiseContext<'_>, dimension: Option<DimensionEnum>) -> Result<(), Error> {
+#[poise::command(slash_command, prefix_command, aliases("show", "display"))]
+pub async fn list(
+    ctx: PoiseContext<'_>,
+    dimension: Option<DimensionEnum>,
+    completed: Option<bool>,
+) -> Result<(), Error> {
     // get waypoints or say error
-    let waypoints = match db::select_waypoints(&ctx.data().pool, &dimension).await {
+    let waypoints = match db::select_waypoints(&ctx.data().pool, &dimension, &completed).await {
         Ok(val) => val,
         Err(e) => {
             ctx.say(format!("Failed getting waypoints: {}", e)).await?;
@@ -42,7 +46,18 @@ pub async fn list(ctx: PoiseContext<'_>, dimension: Option<DimensionEnum>) -> Re
 
         // dimension, if filetered
         if let Some(dim) = &dimension {
-            text.push_str(&format!("\nDimension: {}", dim));
+            text.push_str(&format!("\nDimension: *{}*", dim));
+        }
+
+        // completed, if filetered
+        if let Some(val) = completed {
+            text.push_str(&format!(
+                "\nOnly {} entries",
+                match val {
+                    true => "*Completed*",
+                    false => "*Not Completed*",
+                }
+            ));
         }
 
         // page
@@ -55,6 +70,7 @@ pub async fn list(ctx: PoiseContext<'_>, dimension: Option<DimensionEnum>) -> Re
             // completed
             if let Some(val) = w.completed
                 && val
+                && completed.is_none()
             {
                 name.push_str("*(Completed)*");
             };
@@ -63,7 +79,7 @@ pub async fn list(ctx: PoiseContext<'_>, dimension: Option<DimensionEnum>) -> Re
 
             // dimension, if not filtered
             if dimension.is_none() {
-                text.push_str(&format!("\n> {}", w.dimension));
+                text.push_str(&format!("\n*{}*", w.dimension));
             }
         }
 
