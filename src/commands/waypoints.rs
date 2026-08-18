@@ -1,19 +1,48 @@
+use poise::serenity_prelude as serenity;
+
 use crate::Error;
 use crate::PoiseContext;
 use crate::db;
 use crate::models::DimensionEnum;
 
-// https://docs.rs/poise/0.6.2/src/poise/builtins/paginate.rs.html
 #[poise::command(
     slash_command,
     prefix_command,
-    subcommands("list"),
+    subcommands("list", "help"),
     aliases("waypoint", "w")
 )]
 pub async fn waypoints(_: PoiseContext<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+#[poise::command(slash_command, prefix_command, aliases("?", "h"))]
+pub async fn help(ctx: PoiseContext<'_>) -> Result<(), Error> {
+    let text = "## Waypoints help
+**Available commands:**
+- `/waypoints list [dimension] [completed]` - List (show) waypoints 
+- `/waypoints help` - Show this help screen
+
+**Command `/waypoints list`:** 
+- Example usage: 
+  - `/waypoint list`
+  - `/waypoint list dimension:overworld`
+  - `/waypoint list dimension:end completed:false`
+- Optional Arguments: 
+  - `dimension` 
+    - Shows only waypoints in this dimension
+    - Possible values: `overworld`, `nether`, `end`
+  - `completed` 
+    - Shows only waypoints which are (or aren't) marked as *Completed*
+    - Possible values: `true`, `false`";
+
+    let embed = serenity::CreateEmbed::default().description(text);
+    let reply = poise::CreateReply::default().embed(embed);
+    ctx.send(reply).await?;
+
+    Ok(())
+}
+
+// https://docs.rs/poise/0.6.2/src/poise/builtins/paginate.rs.html
 #[poise::command(slash_command, prefix_command, aliases("show", "display"))]
 pub async fn list(
     ctx: PoiseContext<'_>,
