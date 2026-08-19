@@ -1,11 +1,6 @@
 use std::fmt::Display;
 
-pub struct Dimension {
-    pub id: i32,
-    pub name: String,
-}
-
-#[derive(sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct Waypoint {
     pub id: i32,
     pub x: i32,
@@ -60,6 +55,15 @@ impl DimensionEnum {
             DimensionEnum::End => 3,
         }
     }
+
+    pub fn try_from_id(id: i32) -> Option<Self> {
+        match id {
+            1 => Some(Self::Overworld),
+            2 => Some(Self::Nether),
+            3 => Some(Self::End),
+            _ => None,
+        }
+    }
 }
 
 impl Display for DimensionEnum {
@@ -74,7 +78,23 @@ impl Display for DimensionEnum {
     }
 }
 
-#[derive(sqlx::FromRow)]
+impl TryFrom<String> for DimensionEnum {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.to_lowercase().as_str() {
+            "overworld" | "the overworld" => Ok(Self::Overworld),
+            "nether" | "the nether" => Ok(Self::Overworld),
+            "end" | "the end" => Ok(Self::Overworld),
+            _ => Err(anyhow::Error::msg(format!(
+                "Couldn't convert '{}' to DimensionEnum",
+                value
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, sqlx::FromRow)]
 pub struct PendingWaypoint {
     pub id: i32,
     pub action: PendingWaypointAction,
@@ -91,6 +111,47 @@ pub struct PendingWaypoint {
     pub completed: Option<Option<bool>>,
 }
 
+impl TryInto<Waypoint> for PendingWaypoint {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<Waypoint, Self::Error> {
+        let id = self.waypoint_id.unwrap_or(0);
+        let x = match self.x {
+            Some(val) => val,
+            None => return Err(anyhow::Error::msg("X was not defined")),
+        };
+        let y = match self.x {
+            Some(val) => val,
+            None => return Err(anyhow::Error::msg("Y was not defined")),
+        };
+        let z = match self.x {
+            Some(val) => val,
+            None => return Err(anyhow::Error::msg("Z was not defined")),
+        };
+        let name = match self.name {
+            Some(val) => val,
+            None => return Err(anyhow::Error::msg("Name was not defined")),
+        };
+        let dimension = match self.dimension_name {
+            Some(val) => val,
+            None => return Err(anyhow::Error::msg("Dimension Name was not defined")),
+        };
+
+        let completed = self.completed.unwrap_or(None);
+
+        Ok(Waypoint {
+            id,
+            x,
+            y,
+            z,
+            name,
+            dimension,
+            completed,
+        })
+    }
+}
+
+#[derive(Debug)]
 pub enum PendingWaypointAction {
     Add,
     Edit,
@@ -173,7 +234,7 @@ impl PendingWaypoint {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct PendingWaypointRow {
     pub id: i32,
     pub action: String,
@@ -189,6 +250,41 @@ pub struct PendingWaypointRow {
     pub completed_value: Option<bool>,
 }
 
+impl TryInto<PendingWaypoint> for PendingWaypointRow {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<PendingWaypoint, Self::Error> {
+        let completed = match (self.completed_changed, self.completed_value) {
+            (None, _) => None,
+            (Some(false), _) => None,
+            (Some(true), Some(val)) => Some(Some(val)),
+            (Some(true), None) => Some(None),
+        };
+
+        let action = PendingWaypointAction::try_from(self.action)?;
+
+        let dimension_name =
+            DimensionEnum::try_from_id(self.dimension.unwrap_or(-1)).map(|val| val.to_string());
+
+        let result = PendingWaypoint {
+            id: self.id,
+            action,
+            author_name: self.author_name,
+            author_id: self.author_id,
+            waypoint_id: self.waypoint_id,
+            x: self.x,
+            y: self.y,
+            z: self.z,
+            name: self.name.clone(),
+            dimension_id: self.dimension,
+            dimension_name,
+            completed,
+        };
+
+        Ok(result)
+    }
+}
+
 impl TryInto<PendingWaypoint> for &PendingWaypointRow {
     type Error = anyhow::Error;
 
@@ -202,6 +298,9 @@ impl TryInto<PendingWaypoint> for &PendingWaypointRow {
 
         let action = PendingWaypointAction::try_from(self.action.clone())?;
 
+        let dimension_name =
+            DimensionEnum::try_from_id(self.dimension.unwrap_or(-1)).map(|val| val.to_string());
+
         let result = PendingWaypoint {
             id: self.id,
             action,
@@ -213,7 +312,7 @@ impl TryInto<PendingWaypoint> for &PendingWaypointRow {
             z: self.z,
             name: self.name.clone(),
             dimension_id: self.dimension,
-            dimension_name: None, // TODO: get this somehow
+            dimension_name,
             completed,
         };
 

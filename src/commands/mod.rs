@@ -3,3 +3,5 @@ mod waypoints;
 
 pub use hello::hello;
 pub use waypoints::waypoints;
+
+mod utils;

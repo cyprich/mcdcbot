@@ -1,5 +1,5 @@
 use log::{error, warn};
-use sqlx::{postgres::PgPoolOptions, query_as, query_scalar};
+use sqlx::{postgres::PgPoolOptions, query, query_as, query_scalar};
 
 use crate::models::{DimensionEnum, PendingWaypoint, PendingWaypointRow, Waypoint};
 
@@ -148,4 +148,115 @@ pub async fn insert_pending_waypoint(
     tx.commit().await?;
 
     Ok(result)
+}
+
+pub async fn has_pending_waypoints(pool: &Pool) -> anyhow::Result<bool> {
+    let result = query_scalar!("select count(*) > 0 from pending_waypoints")
+        .fetch_one(pool)
+        .await?;
+
+    match result {
+        Some(val) => Ok(val),
+        None => Err(anyhow::Error::msg(
+            "Failed to check if there are any Pending Waypoints...",
+        )),
+    }
+}
+
+pub async fn approve(pool: &Pool, id: Option<i32>) -> anyhow::Result<Vec<i32>> {
+    // TODO: remove pending waypoints
+    let mut tx = pool.begin().await?;
+
+    let mut builder = Builder::new("select * from pending_waypoints");
+
+    if let Some(id) = id {
+        builder.push(" where id = ");
+        builder.push_bind(id);
+    };
+
+    let pending = builder
+        .build_query_as::<PendingWaypointRow>()
+        .fetch_all(&mut *tx)
+        .await?;
+
+    if pending.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let mut new_ids = vec![]; // will be returned
+    let mut old_ids = vec![]; // will be removed from pending_waypoints table
+
+    // add, edit or remove waypoint
+    for p in pending {
+        match p.action.to_lowercase().as_str() {
+            "add" => {
+                old_ids.push(p.id);
+                let p: PendingWaypoint = match p.try_into() {
+                    Ok(val) => val,
+                    Err(e) => {
+                        error!(
+                            "Failed to convert PendingWaypointRow to PendingWaypoint: {}",
+                            e
+                        );
+                        continue;
+                    }
+                };
+
+                let w: Waypoint = match p.try_into() {
+                    Ok(val) => val,
+                    Err(e) => {
+                        error!("Failed to comvert PendingWaypoint into Waypoint: {}", e);
+                        continue;
+                    }
+                };
+
+                let dim_id =
+                    match query_scalar!("select id from dimensions where name = $1", w.dimension)
+                        .fetch_optional(&mut *tx)
+                        .await
+                    {
+                        Ok(Some(val)) => val,
+                        _ => {
+                            error!("Failed getting ID for dimension '{}'", w.dimension);
+                            continue;
+                        }
+                    };
+
+                let id = query_scalar!(
+                    "insert into waypoints (name, x, y, z, dimension, completed) values ($1, $2, $3, $4, $5, $6) returning id",
+                    w.name,
+                    w.x,
+                    w.y,
+                    w.z,
+                    dim_id,
+                    w.completed
+                ).fetch_one(&mut *tx).await;
+
+                let id = match id {
+                    Ok(val) => val,
+                    Err(e) => {
+                        error!("Failed inserting: {}", e);
+                        return Err(e.into());
+                    }
+                };
+
+                new_ids.push(id);
+            }
+            "edit" => (),
+            "delete" => (),
+            _ => (),
+        }
+    }
+
+    query!("delete from pending_waypoints where id = any($1)", &old_ids)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+
+    Ok(new_ids)
+}
+
+pub async fn reject(pool: &Pool, id: Option<i32>) -> anyhow::Result<Vec<i32>> {
+    todo!();
 }

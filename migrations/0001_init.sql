@@ -11,7 +11,7 @@ create table waypoints (
     x int4 not null,
     y int4 not null,
     z int4 not null,
-    dimension integer references dimensions(id),
+    dimension integer references dimensions(id),  -- TODO: shouldnt this be not null?
     completed bool
 );
 
