@@ -1,4 +1,3 @@
-use log::warn;
 use poise::CreateReply;
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::CreateEmbed;
@@ -200,98 +199,16 @@ pub async fn pending(ctx: PoiseContext<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, aliases("accept"))]
 pub async fn approve(ctx: PoiseContext<'_>, id: Option<i32>) -> Result<(), Error> {
-    // check permissions
-    if !utils::has_permission(&ctx).await {
-        ctx.say("You don't have permissions to perform this operation!")
-            .await?;
-
-        return Ok(());
-    }
-
-    // no waypoints to approve
-    if !db::has_pending_waypoints(&ctx.data().pool)
-        .await
-        .unwrap_or(true)
-    {
-        ctx.say("No Waypoints to approve!").await?;
-        return Ok(());
-    }
-
-    // approve one or more?
-    match id {
-        Some(id) => {
-            let new_id = db::approve(&ctx.data().pool, Some(id)).await?;
-            if new_id.is_empty() {
-                // result is empty
-                ctx.say("Failed to approve Waypoint, or Waypoint ID is incorrect")
-                    .await?;
-            } else if new_id.len() == 1 {
-                // result is one number (expected situation)
-                ctx.say(format!(
-                    "Wapoint succesfully approved!\nNew Waypoint ID is #{}",
-                    new_id[0]
-                ))
-                .await?;
-            } else {
-                // result is multiple numbers
-                ctx.say(format!(
-                    "It seems like multiple Waypoints were approved, which is weird :/
-                    Anyways, there are the new ID's: {}",
-                    new_id
-                        .iter()
-                        .map(i32::to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ))
-                .await?;
-            }
-        }
-        None => {
-            ctx.say("**Warning!** All Waypoints will be approved.\nProceed?")
-                .await?;
-            // TODO: buttons: continue/cancel
-            let ids = db::approve(&ctx.data().pool, None).await?;
-            if ids.is_empty() {
-                ctx.say("Failed to approve Waypoints").await?;
-            } else {
-                ctx.say(format!(
-                    "Waypoints approved!\nHere are the new ID's: {}",
-                    ids.iter()
-                        .map(i32::to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ))
-                .await?;
-            }
-        }
-    }
-
+    utils::approve_or_reject_pending_waypoints(&ctx, id, utils::ApproveOrRejectEnum::Approve)
+        .await?;
     Ok(())
 }
 
 #[poise::command(slash_command, prefix_command, aliases("deny"))]
 pub async fn reject(ctx: PoiseContext<'_>, id: Option<i32>) -> Result<(), Error> {
-    // check permissions
-    if !utils::has_permission(&ctx).await {
-        ctx.say("You don't have permissions to perform this operation!")
-            .await?;
-
-        return Ok(());
-    }
-
-    // no waypoints to approve
-    if !db::has_pending_waypoints(&ctx.data().pool)
-        .await
-        .unwrap_or(true)
-    {
-        ctx.say("No Waypoints to approve!").await?;
-        return Ok(());
-    }
-
-    ctx.say("*Sorry, this feature is not implemented (yet!)*")
+    utils::approve_or_reject_pending_waypoints(&ctx, id, utils::ApproveOrRejectEnum::Reject)
         .await?;
-
     Ok(())
 }

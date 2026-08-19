@@ -258,5 +258,22 @@ pub async fn approve(pool: &Pool, id: Option<i32>) -> anyhow::Result<Vec<i32>> {
 }
 
 pub async fn reject(pool: &Pool, id: Option<i32>) -> anyhow::Result<Vec<i32>> {
-    todo!();
+    let result = match id {
+        Some(val) => {
+            query_scalar!(
+                "delete from pending_waypoints where id = $1 returning id",
+                val
+            )
+            .fetch_one(pool)
+            .await?;
+            vec![val]
+        }
+        None => {
+            query_scalar!("delete from pending_waypoints returning id")
+                .fetch_all(pool)
+                .await?
+        }
+    };
+
+    Ok(result)
 }
