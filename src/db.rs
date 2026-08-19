@@ -1,7 +1,7 @@
-use log::error;
-use sqlx::{postgres::PgPoolOptions, query_scalar};
+use log::{error, warn};
+use sqlx::{postgres::PgPoolOptions, query_as, query_scalar};
 
-use crate::models::{DimensionEnum, PendingWaypoint, Waypoint};
+use crate::models::{DimensionEnum, PendingWaypoint, PendingWaypointRow, Waypoint};
 
 pub type Pool = sqlx::Pool<sqlx::Postgres>;
 type Builder = sqlx::QueryBuilder<sqlx::Postgres>;
@@ -70,13 +70,35 @@ pub async fn select_waypoints(
     Ok(waypoints)
 }
 
+pub async fn select_pending_waypoints(pool: &Pool) -> anyhow::Result<Vec<PendingWaypoint>> {
+    let rows = query_as!(
+        PendingWaypointRow,
+        "select * from pending_waypoints order by id"
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let result = rows
+        .iter()
+        .filter_map(|r| match r.try_into() {
+            Ok(val) => Some(val),
+            Err(e) => {
+                warn!("Failed converting '{:?}' to PendingWaypoing: {}", r, e);
+                None
+            }
+        })
+        .collect::<Vec<PendingWaypoint>>();
+
+    Ok(result)
+}
+
 pub async fn insert_pending_waypoint(
     pool: &Pool,
     waypoint: &PendingWaypoint,
 ) -> anyhow::Result<i32> {
     let mut tx = pool.begin().await?;
 
-    let dimension = match &waypoint.dimension {
+    let dimension = match &waypoint.dimension_name {
         // if dimension was changed - we need to find ID
         Some(dimension) => {
             let id = query_scalar!("select id from dimensions where name = $1", dimension)
@@ -105,11 +127,12 @@ pub async fn insert_pending_waypoint(
 
     let result = query_scalar!(
         "insert into pending_waypoints
-        (action, author, waypoint_id, name, x, y, z, dimension, completed_changed, completed_value) 
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        (action, author_name, author_id, waypoint_id, name, x, y, z, dimension, completed_changed, completed_value) 
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         returning id",
         waypoint.action.to_string(),
-        waypoint.author,
+        waypoint.author_name,
+        waypoint.author_id,
         waypoint.waypoint_id,
         waypoint.name,
         waypoint.x,

@@ -18,7 +18,8 @@ create table waypoints (
 create table pending_waypoints (
     id serial primary key,
     action varchar(16) not null,  -- add, edit, delete
-    author varchar(255) not null,
+    author_name varchar(255) not null,
+    author_id varchar(64) not null,  -- TODO: what is the actual length? could be just char
 
     waypoint_id integer references waypoints(id),
     name varchar(255),

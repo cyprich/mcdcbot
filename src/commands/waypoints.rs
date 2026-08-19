@@ -1,4 +1,6 @@
+use poise::CreateReply;
 use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::CreateEmbed;
 
 use crate::Error;
 use crate::PoiseContext;
@@ -121,6 +123,7 @@ pub async fn list(
 
         // each waypoint
         for w in page {
+            text.push('\n');
             text.push_str(&w.to_embed_text(completed.is_none(), dimension.is_none()));
         }
 
@@ -150,13 +153,15 @@ pub async fn add(
     let pending = PendingWaypoint {
         id: 0,
         action: PendingWaypointAction::Add,
-        author: ctx.author().name.clone(),
+        author_name: ctx.author().name.clone(),
+        author_id: ctx.author().to_string(),
         waypoint_id: None,
         x: Some(x),
         y: Some(y),
         z: Some(z),
         name: Some(name),
-        dimension: Some(dimension.to_string()),
+        dimension_id: Some(dimension.id()),
+        dimension_name: Some(dimension.to_string()),
         completed: Some(completed),
     };
 
@@ -174,7 +179,21 @@ This Waypoint is **pending** and will appear in Waypoints as soon as Admin appro
 
 #[poise::command(slash_command, prefix_command, aliases("a", "create", "c"))]
 pub async fn pending(ctx: PoiseContext<'_>) -> Result<(), Error> {
-    ctx.say("*Sorry, this feature is not implemented (yet!)*")
-        .await?;
+    let pending = db::select_pending_waypoints(&ctx.data().pool).await?;
+
+    if pending.is_empty() {
+        ctx.say("The are no Pending Waypoints!").await?;
+        return Ok(());
+    }
+
+    let mut text = format!("## Pending Waypoints\n Results: {}", pending.len());
+    for p in pending {
+        text.push_str(&format!("\n{}", p.to_embed_text()));
+    }
+
+    let embed = CreateEmbed::default().description(text);
+    let reply = CreateReply::default().embed(embed);
+    ctx.send(reply).await?;
+
     Ok(())
 }
