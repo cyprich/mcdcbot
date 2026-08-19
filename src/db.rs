@@ -1,7 +1,7 @@
 use log::error;
-use sqlx::{postgres::PgPoolOptions, query_as, query_scalar};
+use sqlx::{postgres::PgPoolOptions, query_scalar};
 
-use crate::models::{self, DimensionEnum, Waypoint};
+use crate::models::{DimensionEnum, PendingWaypoint, Waypoint};
 
 pub type Pool = sqlx::Pool<sqlx::Postgres>;
 type Builder = sqlx::QueryBuilder<sqlx::Postgres>;
@@ -20,7 +20,7 @@ pub async fn select_waypoints(
     pool: &Pool,
     dimension: &Option<DimensionEnum>,
     completed: &Option<bool>,
-) -> anyhow::Result<Vec<models::Waypoint>> {
+) -> anyhow::Result<Vec<crate::models::Waypoint>> {
     let mut tx = pool.begin().await?;
     let mut builder = Builder::new(
         "select 
@@ -68,4 +68,61 @@ pub async fn select_waypoints(
         .await?;
 
     Ok(waypoints)
+}
+
+pub async fn insert_pending_waypoint(
+    pool: &Pool,
+    waypoint: &PendingWaypoint,
+) -> anyhow::Result<i32> {
+    let mut tx = pool.begin().await?;
+
+    let dimension = match &waypoint.dimension {
+        // if dimension was changed - we need to find ID
+        Some(dimension) => {
+            let id = query_scalar!("select id from dimensions where name = $1", dimension)
+                .fetch_optional(&mut *tx)
+                .await?;
+
+            match id {
+                Some(val) => Some(val),
+                None => {
+                    return Err(anyhow::Error::msg(format!(
+                        "Couldn't find dimension '{}' in database",
+                        dimension
+                    )));
+                }
+            }
+        }
+        // if dimension was not changed, leave it be
+        None => None,
+    };
+
+    // make `Option<Option<bool>>` into two variables for database
+    let (completed_changed, completed_value) = match waypoint.completed {
+        Some(value) => (true, value),
+        None => (false, None),
+    };
+
+    let result = query_scalar!(
+        "insert into pending_waypoints
+        (action, author, waypoint_id, name, x, y, z, dimension, completed_changed, completed_value) 
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        returning id",
+        waypoint.action.to_string(),
+        waypoint.author,
+        waypoint.waypoint_id,
+        waypoint.name,
+        waypoint.x,
+        waypoint.y,
+        waypoint.z,
+        dimension,
+        completed_changed,
+        completed_value
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(result)
 }

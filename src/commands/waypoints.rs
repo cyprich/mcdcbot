@@ -4,17 +4,25 @@ use crate::Error;
 use crate::PoiseContext;
 use crate::db;
 use crate::models::DimensionEnum;
+use crate::models::PendingWaypoint;
+use crate::models::PendingWaypointAction;
 
+/// Root waypoints command
+///
+/// Contains subcommands
 #[poise::command(
     slash_command,
     prefix_command,
-    subcommands("list", "help"),
+    subcommands("list", "add", "help"),
     aliases("waypoint", "w")
 )]
 pub async fn waypoints(_: PoiseContext<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Waypoints help command
+///
+/// TODO: doesn't poise have better solution for this?
 #[poise::command(slash_command, prefix_command, aliases("?", "h"))]
 pub async fn help(ctx: PoiseContext<'_>) -> Result<(), Error> {
     let text = "## Waypoints help
@@ -42,6 +50,11 @@ pub async fn help(ctx: PoiseContext<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Waypoints list command
+///
+/// Has optional parameters:
+/// - dimension
+/// - completed
 // https://docs.rs/poise/0.6.2/src/poise/builtins/paginate.rs.html
 #[poise::command(slash_command, prefix_command, aliases("show", "display"))]
 pub async fn list(
@@ -94,22 +107,7 @@ pub async fn list(
 
         // each waypoint
         for w in page {
-            // title kinda
-            let mut name = format!("**{}** \\#{} ", w.name, w.id);
-            // completed
-            if let Some(val) = w.completed
-                && val
-                && completed.is_none()
-            {
-                name.push_str("*(Completed)*");
-            };
-            // name, coords
-            text.push_str(&format!("\n\n{}\n{} / {} / {}", name, w.x, w.y, w.z));
-
-            // dimension, if not filtered
-            if dimension.is_none() {
-                text.push_str(&format!("\n*{}*", w.dimension));
-            }
+            text.push_str(&w.to_embed_text(completed.is_none(), dimension.is_none()));
         }
 
         pages.push(text);
@@ -117,6 +115,41 @@ pub async fn list(
 
     let pages = pages.iter().map(String::as_str).collect::<Vec<_>>();
     poise::builtins::paginate(ctx, &pages).await?;
+
+    Ok(())
+}
+
+#[poise::command(slash_command, prefix_command, aliases("a", "create", "c"))]
+pub async fn add(
+    ctx: PoiseContext<'_>,
+    #[description = "Name of the waypoint"] name: String,
+    x: i32,
+    y: i32,
+    z: i32,
+    dimension: DimensionEnum,
+    completed: Option<bool>,
+) -> Result<(), Error> {
+    let pending = PendingWaypoint {
+        id: 0,
+        action: PendingWaypointAction::Add,
+        author: ctx.author().name.clone(),
+        waypoint_id: None,
+        x: Some(x),
+        y: Some(y),
+        z: Some(z),
+        name: Some(name),
+        dimension: Some(dimension.to_string()),
+        completed: Some(completed),
+    };
+
+    let id = db::insert_pending_waypoint(&ctx.data().pool, &pending).await?;
+
+    ctx.say(format!(
+"Created new Waypoint!
+This Waypoint is **pending** with ID **#{id}** and will appear in Waypoints as soon as Admin approves it
+> See `/waypoints pending`",
+    ))
+    .await?;
 
     Ok(())
 }
