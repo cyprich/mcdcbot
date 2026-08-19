@@ -13,7 +13,7 @@ use crate::models::PendingWaypointAction;
 #[poise::command(
     slash_command,
     prefix_command,
-    subcommands("list", "add", "help"),
+    subcommands("list", "add", "pending", "help"),
     aliases("waypoint", "w")
 )]
 pub async fn waypoints(_: PoiseContext<'_>) -> Result<(), Error> {
@@ -28,20 +28,34 @@ pub async fn help(ctx: PoiseContext<'_>) -> Result<(), Error> {
     let text = "## Waypoints help
 **Available commands:**
 - `/waypoints list [dimension] [completed]` - List (show) waypoints 
+- `/waypoint add <name> <x> <y> <z> <dimension> [completed]`
 - `/waypoints help` - Show this help screen
 
 **Command `/waypoints list`:** 
 - Example usage: 
-  - `/waypoint list`
-  - `/waypoint list dimension:overworld`
-  - `/waypoint list dimension:end completed:false`
+  - `/waypoints list`
+  - `/waypoints list dimension:overworld`
+  - `/waypoints list dimension:end completed:false`
 - Optional Arguments: 
   - `dimension` 
     - Shows only waypoints in this dimension
     - Possible values: `overworld`, `nether`, `end`
   - `completed` 
     - Shows only waypoints which are (or aren't) marked as *Completed*
-    - Possible values: `true`, `false`";
+    - Possible values: `true`, `false`
+
+**Command `/waypoints add`:** 
+- Example usage: 
+  - `/waypoints add name:Home x:0 y:63 z:0 dimension:overworld`
+  - `/waypoints add name:Gold farm x:-500 y:127 z:-500 dimension:nether`
+  - `/waypoints add name:End City x:5000 y:100 z:5000 dimension:end completed:true`
+- Arguments: 
+  - `name` - Name of the Waypoint 
+  - `x`, `y`, `z`, - Coordinates of the Waypoint
+  - `dimension` - Possible values: `overworld`, `nether`, `end`
+- Optional Arguments: 
+  - `completed` - Possible values: `true`, `false`
+";
 
     let embed = serenity::CreateEmbed::default().description(text);
     let reply = poise::CreateReply::default().embed(embed);
@@ -119,14 +133,18 @@ pub async fn list(
     Ok(())
 }
 
+/// Add Waypoint
+///
+/// This waypoint will go to pending waypoints
 #[poise::command(slash_command, prefix_command, aliases("a", "create", "c"))]
 pub async fn add(
     ctx: PoiseContext<'_>,
-    #[description = "Name of the waypoint"] name: String,
+    name: String,
     x: i32,
     y: i32,
     z: i32,
     dimension: DimensionEnum,
+    #[description = "(Optional) Whether the subject is completed (if applicable)"]
     completed: Option<bool>,
 ) -> Result<(), Error> {
     let pending = PendingWaypoint {
@@ -142,14 +160,21 @@ pub async fn add(
         completed: Some(completed),
     };
 
-    let id = db::insert_pending_waypoint(&ctx.data().pool, &pending).await?;
+    let _ = db::insert_pending_waypoint(&ctx.data().pool, &pending).await?;
 
-    ctx.say(format!(
-"Created new Waypoint!
-This Waypoint is **pending** with ID **#{id}** and will appear in Waypoints as soon as Admin approves it
+    ctx.say(
+        "Created new Waypoint!
+This Waypoint is **pending** and will appear in Waypoints as soon as Admin approves it
 > See `/waypoints pending`",
-    ))
+    )
     .await?;
 
+    Ok(())
+}
+
+#[poise::command(slash_command, prefix_command, aliases("a", "create", "c"))]
+pub async fn pending(ctx: PoiseContext<'_>) -> Result<(), Error> {
+    ctx.say("*Sorry, this feature is not implemented (yet!)*")
+        .await?;
     Ok(())
 }
